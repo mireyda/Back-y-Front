@@ -1,0 +1,238 @@
+@page "/v_cliente"
+@using AppEstudiante.Data
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject IHttpClientFactory ClientFactory
+
+<h1>Lista de Estudiantes</h1>
+
+<button class="btn btn-primary" @onclick="OpenModal">Agregar Estudiante</button>
+
+@if (getEstudiantesError || estudiantes is null)
+{
+    <p>No se encontró la API.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Carné</th>
+                <th>Nombres</th>
+                <th>Apellidos</th>
+                <th>Dirección</th>
+                <th>Teléfono</th>
+                <th>Id Tipo Sangre</th>
+                <th>Fecha Nacimiento</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var estudiante in estudiantes)
+            {
+                <tr>
+                    <td>@estudiante.Id</td>
+                    <td>@estudiante.Carne</td>
+                    <td>@estudiante.Nombres</td>
+                    <td>@estudiante.Apellidos</td>
+                    <td>@estudiante.Direccion</td>
+                    <td>@estudiante.Telefono</td>
+                    <td>@estudiante.Id_Tipo_Sangre</td>
+                    <td>@estudiante.Fecha_Nacimiento.ToShortDateString()</td>
+                    <td>
+                        <button type="button" 
+                                @onclick="(() => enviarParametros(estudiante.Id, estudiante.Carne, estudiante.Nombres, estudiante.Apellidos, estudiante.Direccion, estudiante.Telefono, estudiante.Fecha_Nacimiento))" 
+                                class="btn btn-info">
+                            <i class="oi oi-pencil"></i>
+                        </button>
+                        <button class="btn btn-danger" @onclick="(() => confirmDelete(estudiante.Id))">Eliminar</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<!-- Modal -->
+<div class="modal fade" id="studentModal" tabindex="-1" aria-labelledby="studentModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="studentModalLabel">@modalTitle</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <EditForm Model="newEstudiante" OnValidSubmit="HandleValidSubmit">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+
+                    <div class="mb-3">
+                        <label for="carne" class="form-label">Carné</label>
+                        <InputText id="carne" @bind-Value="newEstudiante.Carne" class="form-control" required />
+                        <ValidationMessage For="@(() => newEstudiante.Carne)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="nombres" class="form-label">Nombres</label>
+                        <InputText id="nombres" @bind-Value="newEstudiante.Nombres" class="form-control" required />
+                        <ValidationMessage For="@(() => newEstudiante.Nombres)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="apellidos" class="form-label">Apellidos</label>
+                        <InputText id="apellidos" @bind-Value="newEstudiante.Apellidos" class="form-control" required />
+                        <ValidationMessage For="@(() => newEstudiante.Apellidos)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="direccion" class="form-label">Dirección</label>
+                        <InputText id="direccion" @bind-Value="newEstudiante.Direccion" class="form-control" required />
+                        <ValidationMessage For="@(() => newEstudiante.Direccion)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="telefono" class="form-label">Teléfono</label>
+                        <InputText id="telefono" @bind-Value="newEstudiante.Telefono" class="form-control" required />
+                        <ValidationMessage For="@(() => newEstudiante.Telefono)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="idTipoSangre" class="form-label">Id Tipo Sangre</label>
+                        <InputNumber id="idTipoSangre" @bind-Value="newEstudiante.Id_Tipo_Sangre" class="form-control" required />
+                        <ValidationMessage For="@(() => newEstudiante.Id_Tipo_Sangre)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="fechaNacimiento" class="form-label">Fecha Nacimiento</label>
+                        <InputDate id="fechaNacimiento" @bind-Value="newEstudiante.Fecha_Nacimiento" class="form-control" required />
+                        <ValidationMessage For="@(() => newEstudiante.Fecha_Nacimiento)" />
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" @onclick="Crear" class="btn btn-info">Crear</button>
+                        <button type="button" @onclick="Actualizar" class="btn btn-success">Modificar</button>
+                        <button type="button" @onclick="Eliminar" class="btn btn-danger">Eliminar</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function confirmDelete(id) {
+        if (confirm("¿Estás seguro de que deseas eliminar este estudiante?")) {
+            DotNet.invokeMethodAsync('AppEstudiante', 'DeleteEstudiante', id);
+        }
+    }
+</script>
+
+@code {
+    private IEnumerable<Estudiantes>? estudiantes = Array.Empty<Estudiantes>();
+    private bool getEstudiantesError;
+    private Estudiantes newEstudiante = new Estudiantes();
+    private string modalTitle = "Agregar Estudiante";
+    private bool isEditing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEstudiantes();
+    }
+
+    private async Task LoadEstudiantes()
+    {
+        var client = ClientFactory.CreateClient();
+        var response = await client.GetAsync("https://localhost:7145/api/Estudiantes");
+
+        if (response.IsSuccessStatusCode)
+        {
+            var responseStream = await response.Content.ReadAsStreamAsync();
+            estudiantes = await JsonSerializer.DeserializeAsync<IEnumerable<Estudiantes>>(responseStream);
+        }
+        else
+        {
+            getEstudiantesError = true;
+        }
+    }
+
+    private void OpenModal()
+    {
+        newEstudiante = new Estudiantes(); // Reinicia el formulario
+        modalTitle = "Agregar Estudiante";
+        isEditing = false;
+        var modal = new Modal("#studentModal");
+        modal.Show();
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        var client = ClientFactory.CreateClient();
+        if (isEditing)
+        {
+            await client.PutAsJsonAsync($"https://localhost:7145/api/Estudiantes/{newEstudiante.Id}", newEstudiante);
+        }
+        else
+        {
+            await client.PostAsJsonAsync("https://localhost:7145/api/Estudiantes", newEstudiante);
+        }
+        await LoadEstudiantes();
+        var modal = new Modal("#studentModal");
+        modal.Hide();
+    }
+
+    private void EditEstudiante(Estudiantes estudiante)
+    {
+        newEstudiante = estudiante; // Carga el estudiante en el formulario
+        modalTitle = "Editar Estudiante";
+        isEditing = true;
+        var modal = new Modal("#studentModal");
+        modal.Show();
+    }
+
+    private void enviarParametros(int id, string carne, string nombres, string apellidos, string direccion, string telefono, DateTime fechaNacimiento)
+    {
+        newEstudiante = new Estudiantes
+        {
+            Id = id,
+            Carne = carne,
+            Nombres = nombres,
+            Apellidos = apellidos,
+            Direccion = direccion,
+            Telefono = telefono,
+            Fecha_Nacimiento = fechaNacimiento
+        };
+
+        EditEstudiante(newEstudiante);
+    }
+
+    private async Task Crear()
+    {
+        // Lógica para crear un nuevo estudiante
+        await HandleValidSubmit();
+    }
+
+    private async Task Actualizar()
+    {
+        // Lógica para actualizar el estudiante actual
+        if (isEditing)
+        {
+            await HandleValidSubmit();
+        }
+    }
+
+    private async Task Eliminar()
+    {
+        // Lógica para eliminar el estudiante actual
+        await DeleteEstudiante(newEstudiante.Id);
+    }
+
+    [JSInvokable]
+    public async Task DeleteEstudiante(int id)
+    {
+        var client = ClientFactory.CreateClient();
+        await client.DeleteAsync($"https://localhost:7145/api/Estudiantes/{id}");
+        await LoadEstudiantes();
+    }
+}
